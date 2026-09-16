@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Core Banking Migration | PM Portfolio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+        colors: {
+          brand: { 500: '#3b82f6', 400: '#60a5fa' },
+          glass: 'rgba(255, 255, 255, 0.03)',
+          glassBorder: 'rgba(255, 255, 255, 0.08)'
+        }
+      }
+    }
+  }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { background-color: black; color: #cbd5e1; overflow-x: hidden; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+  
+  .glass-card { background: rgba(24, 24, 27, 0.4); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); transition: 0.3s; }
+  .glass-card:hover { border-color: rgba(255,255,255,0.15); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+  
+  .dock { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(2,6,23,0.8); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 100px; padding: 6px 12px; display: flex; gap: 8px; z-index: 50; }
+  .dock-btn { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #94a3b8; cursor: pointer; transition: 0.2s; position: relative; }
+  .dock-btn:hover { background: rgba(255,255,255,0.1); color: #fff; transform: translateY(-3px) scale(1.1); }
+  .dock-btn.active { background: #3b82f6; color: #fff; box-shadow: 0 0 15px rgba(59,130,246,0.5); }
+  
+  .section-view { display: none; padding-bottom: 100px; animation: fadeIn 0.4s ease-out forwards; }
+  .section-view.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Interactive Elements */
+  .data-table { width: 100%; text-align: left; border-collapse: collapse; font-size: 13px; }
+  .data-table th { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: 500; color: #94a3b8; }
+  .data-table td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .data-table tr:hover { background: rgba(255,255,255,0.02); }
+  
+  .raci-cell { text-align: center; font-weight: bold; border-radius: 4px; padding: 2px 0; margin: 0 4px; }
+  .raci-R { background: rgba(59,130,246,0.2); color: #60a5fa; }
+  .raci-A { background: rgba(244,63,94,0.2); color: #fb7185; }
+  .raci-C { background: rgba(245,158,11,0.2); color: #fbbf24; }
+  .raci-I { background: rgba(16,185,129,0.2); color: #34d399; }
+
+  /* AON Network */
+  .aon-canvas { position: relative; height: 500px; border-radius: 12px; background: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 20px 20px; }
+  .aon-node { position: absolute; width: 125px; background: rgba(15,23,42,0.9); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 6px 8px; cursor: pointer; transition: 0.2s; z-index: 10; }
+  .aon-node:hover { transform: translateY(-4px) scale(1.02); border-color: #a855f7; box-shadow: 0 0 20px rgba(168,85,247,0.3); z-index: 20; }
+  .aon-node.critical { border-color: #ef4444; }
+  .aon-line { stroke: rgba(255,255,255,0.15); stroke-width: 2; fill: none; transition: 0.2s; }
+  .aon-line.critical { stroke: rgba(239,68,68,0.5); stroke-width: 3; }
+  .aon-canvas.hover-active .aon-line { opacity: 0.1; }
+  .aon-canvas.hover-active .aon-line.highlight { opacity: 1; stroke: #a855f7; stroke-width: 4; filter: drop-shadow(0 0 5px #a855f7); }
+
+  /* Fake MSP UI */
+  .msp-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 900; display: none; align-items: center; justify-content: center; }
+  .msp-modal.active { display: flex; }
+  .msp-window { width: 95vw; height: 90vh; background: #fff; border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.5); font-family: 'Segoe UI', sans-serif; color: #000; }
+  .msp-header { background: #217346; color: white; padding: 4px 12px; font-size: 12px; display: flex; justify-content: space-between; }
+  .msp-ribbon { background: #f3f4f6; border-bottom: 1px solid #ccc; display: flex; padding-top: 4px; }
+  .msp-tab { padding: 4px 16px; font-size: 12px; cursor: pointer; border: 1px solid transparent; }
+  .msp-tab.active { background: #fff; border-color: #ccc #ccc transparent #ccc; color: #217346; }
+  .msp-body { flex: 1; display: flex; overflow: hidden; }
+  .msp-grid { width: 45%; border-right: 2px solid #999; overflow: auto; }
+  .msp-gantt { width: 55%; overflow: auto; position: relative; }
+  .msp-table { border-collapse: collapse; width: 100%; font-size: 11px; }
+  .msp-table th { background: #f3f4f6; border: 1px solid #ccc; padding: 4px; position: sticky; top: 0; font-weight: normal; text-align: left; }
+  .msp-table td { border: 1px solid #e5e7eb; padding: 4px; white-space: nowrap; }
+  
+  .msp-bar-row { height: 21px; position: relative; }
+  .msp-bar-sum { position: absolute; height: 8px; top: 6px; background: #000; clip-path: polygon(0 0, 100% 0, 100% 100%, 98% 40%, 2% 40%, 0 100%); }
+  .msp-bar-task { position: absolute; height: 10px; top: 5px; background: #7cb5ec; border: 1px solid #3a8ee6; }
+
+  /* Project Charter PDF Styles */
+  .corporate-pdf { font-family: Arial, Helvetica, sans-serif; }
+  .pdf-page { padding: 44px 50px 38px; min-height: 1050px; color: #17233b; }
+  .pdf-section { margin-top: 20px; }
+  .pdf-section h3 { font-size: 14px; color: #18181b; border-bottom: 1px solid #dbe5f2; padding-bottom: 5px; margin-bottom: 10px; font-weight: 800; }
+  .pdf-section p, .pdf-section li { font-size: 11px; line-height: 1.65; color: #475569; }
+  .pdf-section ul { margin: 6px 0 0 18px; list-style: disc; }
+  .pdf-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .pdf-table th { background: #18181b; color: white; text-align: left; padding: 8px; }
+  .pdf-table td { border: 1px solid #dbe5f2; padding: 8px; }
+  .signature-panel { margin-top: 28px; border: 1px solid #cbd5e1; background: #f8fafc; padding: 14px; display: grid; grid-template-columns: 1.3fr 80px 1.5fr; gap: 18px; align-items: center; }
+  .signature-script { font-family: cursive; font-size: 26px; color: #1769e0; font-style: italic; margin: 4px 0; }
+  .signature-seal { width: 68px; height: 68px; border: 2px solid #1769e0; border-radius: 50%; display: grid; place-items: center; color: #1769e0; text-align: center; font-size: 8px; font-weight: 800; }
+
+
+  @keyframes blob {
+    0% { transform: translate(0px, 0px) scale(1); }
+    33% { transform: translate(50px, -50px) scale(1.1); }
+    66% { transform: translate(-40px, 30px) scale(0.9); }
+    100% { transform: translate(0px, 0px) scale(1); }
+  }
+  .animate-blob { animation: blob 20s infinite alternate ease-in-out; }
+  .animation-delay-2000 { animation-delay: 4s; }
+  .animation-delay-4000 { animation-delay: 8s; }
+  
+  body { background-color: transparent; } /* Let the fixed bg handle it */
+
+
+  @keyframes sweep {
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-66.666%); }
+  }
+  .animate-sweep {
+    animation: sweep 20s linear infinite;
+  }
+
+
+  /* Hide scrollbar completely but keep functionality */
+  ::-webkit-scrollbar { display: none; }
+  * { -ms-overflow-style: none; scrollbar-width: none; }
+
+
+  @keyframes shine {
+    100% { left: 200%; }
+  }
+
+
+  /* WBS Tree Styles */
+  .wbs-tree ul {
+    padding-top: 20px; position: relative;
+    transition: all 0.5s;
+    display: flex; justify-content: center;
+    padding-left: 0;
+  }
+  .wbs-tree li {
+    float: left; text-align: center;
+    list-style-type: none;
+    position: relative;
+    padding: 20px 4px 0 4px;
+    transition: all 0.5s;
+  }
+  .wbs-tree li::before, .wbs-tree li::after {
+    content: ''; position: absolute; top: 0; right: 50%;
+    border-top: 2px solid #52525b;
+    width: 50%; height: 20px;
+  }
+  .wbs-tree li::after {
+    right: auto; left: 50%;
+    border-left: 2px solid #52525b;
+  }
+  .wbs-tree li:only-child::after, .wbs-tree li:only-child::before {
+    display: none;
+  }
+  .wbs-tree li:only-child { padding-top: 0; }
+  .wbs-tree li:first-child::before, .wbs-tree li:last-child::after {
+    border: 0 none;
+  }
+  .wbs-tree li:last-child::before {
+    border-right: 2px solid #52525b;
+    border-radius: 0 5px 0 0;
+  }
+  .wbs-tree li:first-child::after {
+    border-radius: 5px 0 0 0;
+  }
+  .wbs-tree ul ul::before {
+    content: '';
+    position: absolute; top: 0; left: 50%;
+    border-left: 2px solid #52525b;
+    width: 0; height: 20px;
+  }
+  .wbs-node {
+    border: 1px solid #52525b;
+    padding: 10px 6px;
+    display: inline-block;
+    border-radius: 6px;
+    background-color: rgba(24, 24, 27, 0.9);
+    color: white;
+    font-size: 11px;
+    min-width: 120px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    transition: all 0.2s;
+    position: relative;
+    z-index: 10;
+  }
+  .wbs-node:hover {
+    background-color: #27272a;
+    border-color: #ffffff;
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 8px 15px rgba(255,255,255,0.1);
+  }
+  .wbs-node .n-id { color: #a1a1aa; font-family: monospace; font-size: 9px; margin-bottom: 2px; }
+  .wbs-node .n-dur { color: #a1a1aa; font-size: 9px; margin-top: 4px; border-top: 1px solid #3f3f46; padding-top: 2px; }
+
+</style>
+</head>
+<body class="font-sans antialiased selection:bg-brand-500 selection:text-white">
+
+  <!-- AMBIENT BACKGROUND ANIMATION (Running Highlights) -->
+  <div class="fixed inset-0 z-[-1] overflow-hidden bg-[black]">
+    
+    <!-- Highlight 1: Blue Sweep -->
+    <div class="absolute -inset-[100%] opacity-40 transform rotate-[15deg]">
+      <div class="absolute inset-0 bg-gradient-to-r from-transparent via-zinc-300/10 to-transparent w-[300%] animate-sweep" style="animation-duration: 18s;"></div>
+    </div>
+    
+    <!-- Highlight 2: Indigo Sweep -->
+    <div class="absolute -inset-[100%] opacity-40 transform -rotate-[20deg]">
+      <div class="absolute inset-0 bg-gradient-to-r from-transparent via-neutral-400/10 to-transparent w-[300%] animate-sweep" style="animation-delay: -7s; animation-duration: 24s;"></div>
+    </div>
+    
+    <!-- Highlight 3: Violet Sweep -->
+    <div class="absolute -inset-[100%] opacity-60 transform rotate-[45deg]">
+      <div class="absolute inset-0 bg-gradient-to-r from-transparent via-zinc-500/10 to-transparent w-[300%] animate-sweep" style="animation-delay: -12s; animation-duration: 32s;"></div>
+    </div>
+
+    <!-- Soft static center glow -->
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] rounded-full bg-zinc-800/20 blur-[150px] pointer-events-none"></div>
+    <!-- Professional Cyber Grid -->
+    <div class="fixed inset-0 z-0 pointer-events-none" style="mask-image: radial-gradient(circle at center, black 10%, transparent 85%); -webkit-mask-image: radial-gradient(circle at center, black 10%, transparent 85%);">
+      <div class="absolute -inset-[120px] bg-[linear-gradient(to_right,rgba(148,163,184,0.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.07)_1px,transparent_1px)] bg-[size:80px_80px] animate-grid"></div>
+    </div>
+  </div>
+    <div class="absolute bottom-[-10%] left-[20%] w-[45vw] h-[45vw] rounded-full bg-violet-900/30 blur-[120px] mix-blend-screen animate-blob animation-delay-4000 pointer-events-none"></div>
+    
+    <!-- Dark overlay to ensure text remains readable -->
+    <div class="absolute inset-0 bg-[black]/40 pointer-events-none"></div>
+  </div>
+    <div class="absolute top-[10%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-indigo-900/30 blur-[120px] mix-blend-screen animate-blob animation-delay-2000"></div>
+    <div class="absolute bottom-[-10%] left-[20%] w-[45vw] h-[45vw] rounded-full bg-violet-900/30 blur-[120px] mix-blend-screen animate-blob animation-delay-4000"></div>
+  </div>
+
+
+  <!-- GLOBAL HOVER TOOLTIP -->
+  <div id="hover-tooltip" class="fixed pointer-events-none z-[9999] bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-lg p-4 w-80 shadow-2xl opacity-0 transition-opacity duration-200" style="left:0; top:0;">
+    <h4 id="tt-title" class="text-cyan-400 font-bold mb-1 border-b border-zinc-700 pb-1">Title</h4>
+    <div id="tt-desc" class="text-base text-white font-medium leading-relaxed mt-2">Description</div>
+  </div>
+
+  <!-- NAVIGATION DOCK -->
+  <nav class="dock">
+    <div class="dock-btn active" onclick="nav('exec')" onmouseenter="showTooltip('Executive Dashboard', 'Project Charter, Scope, and Key Performance Indicators.')" onmouseleave="hideTooltip()"><i data-lucide="layout-dashboard" class="w-5 h-5"></i></div>
+    <div class="dock-btn" onclick="nav('stakeholders')" onmouseenter="showTooltip('Stakeholders & RACI', 'Stakeholder Power/Interest Matrix and RACI Assignment Matrix.')" onmouseleave="hideTooltip()"><i data-lucide="users" class="w-5 h-5"></i></div>
+    <div class="dock-btn" onclick="nav('schedule')" onmouseenter="showTooltip('WBS & Gantt Chart', 'Detailed Work Breakdown Structure and Tracking Gantt.')" onmouseleave="hideTooltip()"><i data-lucide="list-tree" class="w-5 h-5"></i></div>
+    <div class="dock-btn" onclick="nav('network')" onmouseenter="showTooltip('CPM / AON Network', 'Critical Path Method mapping with interactive node tracing.')" onmouseleave="hideTooltip()"><i data-lucide="git-merge" class="w-5 h-5"></i></div>
+    <div class="dock-btn" onclick="nav('resources')" onmouseenter="showTooltip('Resource Leveling & Crashing', 'Resource allocation, conflicts, and schedule compression techniques.')" onmouseleave="hideTooltip()"><i data-lucide="activity" class="w-5 h-5"></i></div>
+    <div class="dock-btn" onclick="nav('evm')" onmouseenter="showTooltip('Earned Value Analysis (EVA)', 'Cost and Schedule performance metrics (CPI, SPI, EV, PV, AC).')" onmouseleave="hideTooltip()"><i data-lucide="trending-up" class="w-5 h-5"></i></div>
+    
+  </nav>
+
+  <!-- MAIN CONTAINER -->
+  <main class="w-[96%] max-w-[2000px] mx-auto p-6 md:p-10 min-h-screen">
+    
+    <header class="mb-10 text-center md:text-left">
+      <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2">Core Banking & STP Underwriting Migration</h1>
+      <p class="text-white font-semibold text-lg drop-shadow-md">Hybrid Agile-Waterfall End-to-End PM Implementation (2026)</p>
+    </header>
+
+    <!-- SECTION 1: EXECUTIVE (Charter) -->
+    <section id="sec-exec" class="section-view active">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-10">
+        <div class="glass-card p-8 text-center" onmouseenter="showTooltip('Total Duration', 'Mandated top-down schedule baseline for the entire migration.')" onmouseleave="hideTooltip()">
+          <div class="text-sm text-white font-mono uppercase mb-1">Baseline Duration</div>
+          <div class="text-5xl font-bold tracking-tight text-white">180 <span class="text-2xl text-white font-normal ml-1">Days</span></div>
+        </div>
+        <div class="glass-card p-8 text-center" onmouseenter="showTooltip('Project Budget', 'Approved budget representing the Budget At Completion (BAC).')" onmouseleave="hideTooltip()">
+          <div class="text-sm text-white font-mono uppercase mb-1">Approved Budget</div>
+          <div class="text-5xl font-bold tracking-tight text-white">₹3.80 <span class="text-2xl text-white font-normal ml-1">Cr</span></div>
+        </div>
+        <div class="glass-card p-8 text-center" onmouseenter="showTooltip('Data Scale', 'Volume of legacy accounts requiring ETL and cleansing.')" onmouseleave="hideTooltip()">
+          <div class="text-sm text-white font-mono uppercase mb-1">Data Migration</div>
+          <div class="text-5xl font-bold tracking-tight text-white">1.4M <span class="text-2xl text-white font-normal ml-1">Records</span></div>
+        </div>
+        <div class="glass-card p-8 text-center border-rose-900/50" onmouseenter="showTooltip('Critical Constraint', 'Maximum allowable system downtime during the weekend Go-Live.')" onmouseleave="hideTooltip()">
+          <div class="text-xs text-rose-400 font-mono uppercase mb-1">Max Downtime</div>
+          <div class="text-5xl font-bold tracking-tight text-rose-100">48 <span class="text-2xl text-rose-800 font-normal ml-1">Hours</span></div>
+        </div>
+      </div>
+      
+      <div class="glass-card p-10">
+        <div class="flex justify-between items-end mb-4 border-b border-zinc-700 pb-2">
+          <h2 class="text-3xl font-bold text-white">Executive Summary</h2>
+        </div>
+
+        <div>
+    
+            <h3 class="text-brand-300 font-semibold text-lg mb-3">Business Case & Scope</h3>
+            <p class="mb-4">Transitioning the legacy Core Banking System (CBS) to a scalable cloud architecture while developing an automated Straight-Through Processing (STP) underwriting engine using a Hybrid Agile-Waterfall framework.</p>
+            <h3 class="text-brand-300 font-semibold text-lg mb-3">Objectives</h3>
+            <ul class="list-disc pl-5 space-y-1 text-white">
+              <li>Reduce loan decision latency from 48 Hours to &lt; 5 Minutes.</li>
+              <li>Achieve 100% data fidelity for 1.4 Million migrated records.</li>
+              <li>Strict adherence to RBI digital lending compliance guidelines.</li>
+            </ul>
+          
+  </div>
+  
+        <!-- Divider Line with Centered Button -->
+        <div class="relative flex items-center justify-center my-12">
+          <div class="absolute w-full h-px bg-zinc-700/80"></div>
+          
+          <button onclick="document.getElementById('charterModal').classList.add('active')" class="relative flex items-center gap-3 px-6 py-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-full text-sm transition font-bold shadow-[0_0_20px_rgba(255,255,255,0.1)] border-2 border-zinc-500 hover:border-white group overflow-hidden z-10">
+            <!-- Animated glowing highlight line -->
+            <span class="absolute bottom-0 left-0 w-full h-[4px] bg-white shadow-[0_0_10px_#ffffff]"></span>
+            <span class="absolute top-0 left-[-100%] w-[50%] h-full bg-gradient-to-r from-transparent via-white/20 to-transparent transform skew-x-[-20deg] group-hover:animate-[shine_1s_ease-in-out]"></span>
+            <i data-lucide="file-text" class="w-5 h-5"></i> View Official Charter PDF
+          </button>
+        </div>
+
+  <div>
+    
+            <h3 class="text-brand-300 font-semibold text-lg mb-3">Approach</h3>
+            <p class="mb-4"><strong>Hybrid Agile-Waterfall:</strong> The overall scheduling, infrastructure provisioning, and data migration follow a strict Waterfall schedule (CPM/AON driven) to manage hard dependencies, while the STP Underwriting Engine development is executed in 4 Agile Sprints.</p>
+            <div class="bg-blue-900/20 p-4 rounded border border-blue-800/50 flex items-center justify-between">
+              <div>
+                <div class="text-xs text-blue-400 mb-1">Performance Status (Day 75)</div>
+                <div class="font-bold text-white">SPI: 0.94 &nbsp;|&nbsp; CPI: 1.03
+  </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    
+    
+
+    <!-- SECTION 2: STAKEHOLDERS & RACI -->
+    <section id="sec-stakeholders" class="section-view">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="glass-card p-10">
+          <h2 class="text-3xl font-bold text-white mb-6 border-b border-zinc-700 pb-2">Stakeholder Matrix</h2>
+          <div class="relative w-full aspect-square max-w-2xl mx-auto border-2 border-zinc-700 aspect-square rounded bg-zinc-900/50">
+            <!-- Grid Lines -->
+            <div class="absolute inset-0 grid grid-cols-2 grid-rows-2">
+              <div class="border-r border-b border-zinc-700 flex items-start justify-center pt-4"><span class="text-white text-xs text-center">Keep Satisfied<br>(High Power, Low Interest)</span></div>
+              <div class="border-b border-zinc-700 flex items-start justify-center pt-4 bg-emerald-900/10 opacity-40"><span class="text-emerald-500 text-xs text-center font-bold">Manage Closely<br>(High Power, High Interest)</span></div>
+              <div class="border-r border-zinc-700 flex items-start justify-center pt-4"><span class="text-white text-xs text-center">Monitor<br>(Low Power, Low Interest)</span></div>
+              <div class="flex items-start justify-center pt-4"><span class="text-white text-xs text-center">Keep Informed<br>(Low Power, High Interest)</span></div>
+            </div>
+            <!-- Nodes -->
+            <div class="absolute p-2 bg-emerald-500/20 border border-emerald-500 text-emerald-200 text-[10px] rounded shadow-lg" style="top: 30%; right: 20%; transform: translate(50%, -50%);" onmouseenter="showTooltip('Steering Committee', 'High Power, High Interest. Requires daily executive briefings.')" onmouseleave="hideTooltip()">Steering Committee</div>
+            <div class="absolute p-2 bg-emerald-500/20 border border-emerald-500 text-emerald-200 text-[10px] rounded shadow-lg" style="top: 40%; right: 40%; transform: translate(50%, -50%);" onmouseenter="showTooltip('RBI Regulators', 'High Power, High Interest. Compliance is a hard constraint.')" onmouseleave="hideTooltip()">RBI / Audit</div>
+            <div class="absolute p-2 bg-blue-500/20 border border-blue-500 text-blue-200 text-[10px] rounded shadow-lg" style="top: 35%; left: 25%; transform: translate(-50%, -50%);" onmouseenter="showTooltip('Exec Sponsors', 'High Power, Low Interest. Provide funding, need high-level summaries.')" onmouseleave="hideTooltip()">Sponsors</div>
+            <div class="absolute p-2 bg-blue-500/20 border border-blue-500 text-blue-200 text-[10px] rounded shadow-lg" style="top: 80%; right: 25%; transform: translate(50%, -50%);" onmouseenter="showTooltip('Branch Staff', 'Low Power, High Interest. Will use the system daily.')" onmouseleave="hideTooltip()">Branch Staff</div>
+  <div class="absolute p-2 bg-zinc-500/20 border border-zinc-500 text-white font-medium text-[10px] rounded shadow-lg" style="top: 75%; left: 25%; transform: translate(-50%, -50%);" onmouseenter="showTooltip('External Vendors', 'Low Power, Low Interest. Monitor for peripheral impacts during migration.')" onmouseleave="hideTooltip()">External Vendors</div>
+
+            <!-- Labels -->
+            <div class="absolute -left-6 top-1/2 -translate-y-1/2 -rotate-90 text-xs text-white font-bold uppercase tracking-widest">Power</div>
+            <div class="absolute bottom-[-24px] left-1/2 -translate-x-1/2 text-xs text-white font-bold uppercase tracking-widest">Interest</div>
+          </div>
+        </div>
+
+        <div class="glass-card p-8 overflow-x-auto">
+          <h2 class="text-3xl font-bold text-white mb-6 border-b border-zinc-700 pb-2">RACI Matrix</h2>
+          <table class="data-table w-full text-lg">
+            <th class="py-4 text-white font-medium font-bold"ead>
+              <tr><th class="py-4 text-white font-medium font-bold">Task / Phase</th><th class="py-4 text-white font-medium font-bold" class="text-center">PM</th><th class="py-4 text-white font-medium font-bold" class="text-center">Cloud Arch.</th><th class="py-4 text-white font-medium font-bold" class="text-center">DBA</th><th class="py-4 text-white font-medium font-bold" class="text-center">API Devs</th><th class="py-4 text-white font-medium font-bold" class="text-center">Compliance</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="py-4">1.0 Project Charter & Audit</td>
+                <td class="py-4"><div class="raci-cell raci-A" onmouseenter="showTooltip('Accountable', 'The ultimate owner of the task.')" onmouseleave="hideTooltip()">A</div></td>
+                <td class="py-4"><div class="raci-cell raci-I" onmouseenter="showTooltip('Informed', 'Kept up-to-date on progress.')" onmouseleave="hideTooltip()">I</div></td>
+                <td class="py-4"><div class="raci-cell raci-I">I</div></td>
+                <td class="py-4"><div class="raci-cell raci-I">I</div></td>
+                <td class="py-4"><div class="raci-cell raci-R" onmouseenter="showTooltip('Responsible', 'The person doing the actual work.')" onmouseleave="hideTooltip()">R</div></td>
+              </tr>
+              <tr>
+                <td class="py-4">2.0 VNet & Architecture</td>
+                <td class="py-4"><div class="raci-cell raci-A">A</div></td>
+                <td class="py-4"><div class="raci-cell raci-R">R</div></td>
+                <td class="py-4"><div class="raci-cell raci-C" onmouseenter="showTooltip('Consulted', 'Provides input before work is done.')" onmouseleave="hideTooltip()">C</div></td>
+                <td class="py-4"><div class="raci-cell raci-I">I</div></td>
+                <td class="py-4"><div class="raci-cell raci-C">C</div></td>
+              </tr>
+              <tr>
+                <td class="py-4">3.0 STP Agile Sprints</td>
+                <td class="py-4"><div class="raci-cell raci-A">A</div></td>
+                <td class="py-4"><div class="raci-cell raci-C">C</div></td>
+                <td class="py-4"><div class="raci-cell raci-I">I</div></td>
+                <td class="py-4"><div class="raci-cell raci-R">R</div></td>
+                <td class="py-4"><div class="raci-cell raci-C">C</div></td>
+              </tr>
+              <tr>
+                <td class="py-4">4.0 DB Migration (1.4M)</td>
+                <td class="py-4"><div class="raci-cell raci-A">A</div></td>
+                <td class="py-4"><div class="raci-cell raci-C">C</div></td>
+                <td class="py-4"><div class="raci-cell raci-R">R</div></td>
+                <td class="py-4"><div class="raci-cell raci-I">I</div></td>
+                <td class="py-4"><div class="raci-cell raci-I">I</div></td>
+              </tr>
+              <tr>
+                <td class="py-4">5.0 UAT & Security Audit</td>
+                <td class="py-4"><div class="raci-cell raci-A">A</div></td>
+                <td class="py-4"><div class="raci-cell raci-C">C</div></td>
+                <td class="py-4"><div class="raci-cell raci-I">I</div></td>
+                <td class="py-4"><div class="raci-cell raci-I">I</div></td>
+                <td class="py-4"><div class="raci-cell raci-R">R</div></td>
+              </tr>
+              <tr>
+                <td class="py-4">6.0 Live Cutover (48 Hours)</td>
+                <td class="py-4"><div class="raci-cell raci-A">A</div></td>
+                <td class="py-4"><div class="raci-cell raci-R">R</div></td>
+                <td class="py-4"><div class="raci-cell raci-R">R</div></td>
+                <td class="py-4"><div class="raci-cell raci-R">R</div></td>
+                <td class="py-4"><div class="raci-cell raci-I">I</div></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="flex gap-4 mt-6 text-xs text-white justify-center">
+            <span class="flex items-center gap-1"><span class="w-3 h-3 block bg-blue-500/20 text-blue-400 text-center rounded">R</span> Responsible</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 block bg-rose-500/20 text-rose-400 text-center rounded">A</span> Accountable</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 block bg-amber-500/20 text-amber-400 text-center rounded">C</span> Consulted</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 block bg-emerald-500/20 text-emerald-400 text-center rounded">I</span> Informed</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: WBS & GANTT -->
+    <section id="sec-schedule" class="section-view">
+      
+      <!-- WBS Card -->
+      <div class="glass-card p-10 mb-8">
+        <div class="flex justify-between items-center mb-6 border-b border-zinc-700 pb-2">
+          <h2 class="text-3xl font-bold text-white">Work Breakdown Structure (WBS)</h2>
+          <button onclick="openMspGantt()" class="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded text-sm transition"><i data-lucide="image" class="w-4 h-4"></i> View Simulated .mpp Source</button>
+        </div>
+        
+        <div class="overflow-x-auto rounded border border-zinc-700/50 custom-scrollbar">
+          
+          <!-- Hierarchical WBS Tree -->
+          <div class="wbs-tree overflow-x-auto custom-scrollbar pb-10 pt-4 w-full">
+            <ul>
+              <li>
+                <div class="wbs-node border-brand-500 bg-brand-900/20">
+                  <div class="n-id text-brand-300">1.0</div>
+                  <div class="n-title text-white">Core Banking & STP Migration</div>
+                  <div class="n-dur text-brand-200">180 Days (Day 0 - Day 180)</div>
+                  <div class="n-status text-brand-400">Master Project</div>
+                </div>
+                <ul>
+                  <!-- Phase 1 -->
+                  <li>
+                    <div class="wbs-node border-emerald-500 bg-emerald-950/20">
+                      <div class="n-id text-emerald-300">1.0</div>
+                      <div class="n-title text-emerald-100">Initiation</div>
+                      <div class="n-dur text-emerald-300">20 Days</div>
+                    </div>
+                    <ul>
+                      <li><div class="wbs-node border-emerald-500 bg-emerald-950/20"><div class="n-id text-emerald-300">1.1</div><div class="n-title text-emerald-100">Charter Setup</div><div class="n-dur text-emerald-300">6 Days</div><div class="n-status text-emerald-400">Completed</div></div></li>
+                      <li><div class="wbs-node border-emerald-500 bg-emerald-950/20"><div class="n-id text-emerald-300">1.2</div><div class="n-title text-emerald-100">RBI Audit</div><div class="n-dur text-emerald-300">14 Days</div><div class="n-status text-emerald-400">Completed</div></div></li>
+                    </ul>
+                  </li>
+                  <!-- Phase 2 -->
+                  <li>
+                    <div class="wbs-node border-emerald-500 bg-emerald-950/20">
+                      <div class="n-id text-emerald-300">2.0</div>
+                      <div class="n-title text-emerald-100">Architecture</div>
+                      <div class="n-dur text-emerald-300">25 Days</div>
+                    </div>
+                    <ul>
+                      <li><div class="wbs-node border-emerald-500 bg-emerald-950/20"><div class="n-id text-emerald-300">2.1</div><div class="n-title text-emerald-100">VNet Hardening</div><div class="n-dur text-emerald-300">15 Days</div><div class="n-status text-emerald-400">Completed</div></div></li>
+                      <li><div class="wbs-node border-emerald-500 bg-emerald-950/20"><div class="n-id text-emerald-300">2.2</div><div class="n-title text-emerald-100">Target Schema</div><div class="n-dur text-emerald-300">10 Days</div><div class="n-status text-emerald-400">Completed</div></div></li>
+                    </ul>
+                  </li>
+                  <!-- Phase 3 -->
+                  <li>
+                    <div class="wbs-node border-blue-500 bg-blue-950/20">
+                      <div class="n-id text-blue-300">3.0</div>
+                      <div class="n-title text-blue-100">STP Engine</div>
+                      <div class="n-dur text-blue-300">50 Days</div>
+                    </div>
+                    <ul>
+                      <li><div class="wbs-node border-blue-500 bg-blue-950/20"><div class="n-id text-blue-300">3.1</div><div class="n-title text-blue-100">4 Agile Sprints</div><div class="n-dur text-blue-300">50 Days</div><div class="n-status text-blue-400 animate-pulse">In Progress</div></div></li>
+                    </ul>
+                  </li>
+                  <!-- Phase 4 -->
+                  <li>
+                    <div class="wbs-node border-blue-500 bg-blue-950/20">
+                      <div class="n-id text-blue-300">4.0</div>
+                      <div class="n-title text-blue-100">Data Migration</div>
+                      <div class="n-dur text-blue-300">35 Days</div>
+                    </div>
+                    <ul>
+                      <li><div class="wbs-node border-blue-500 bg-blue-950/20"><div class="n-id text-blue-300">4.1</div><div class="n-title text-blue-100">ETL Pipeline</div><div class="n-dur text-blue-300">35 Days</div><div class="n-status text-blue-400 animate-pulse">In Progress</div></div></li>
+                    </ul>
+                  </li>
+                  <!-- Phase 5 -->
+                  <li>
+                    <div class="wbs-node border-zinc-500 bg-zinc-900">
+                      <div class="n-id text-zinc-400">5.0</div>
+                      <div class="n-title text-white">UAT & Security</div>
+                      <div class="n-dur text-zinc-400">30 Days</div>
+                      <div class="n-status text-zinc-500">Pending</div>
+                    </div>
+                  </li>
+                  <!-- Phase 6 -->
+                  <li>
+                    <div class="wbs-node border-zinc-500 bg-zinc-900">
+                      <div class="n-id text-zinc-400">6.0</div>
+                      <div class="n-title text-white">Live Cutover</div>
+                      <div class="n-dur text-zinc-400">48 Hours</div>
+                      <div class="n-status text-zinc-500">Pending</div>
+                    </div>
+                  </li>
+                  <!-- Phase 7 -->
+                  <li>
+                    <div class="wbs-node border-zinc-500 bg-zinc-900">
+                      <div class="n-id text-zinc-400">7.0</div>
+                      <div class="n-title text-white">Stabilization</div>
+                      <div class="n-dur text-zinc-400">18 Days</div>
+                      <div class="n-status text-zinc-500">Pending</div>
+                    </div>
+                  </li>
+                  <!-- Phase 8 -->
+                  <li>
+                    <div class="wbs-node border-rose-500 bg-rose-950/20">
+                      <div class="n-id text-rose-400">8.0</div>
+                      <div class="n-title text-rose-100">Mgmt Reserve</div>
+                      <div class="n-dur text-rose-400">35 Days</div>
+                      <div class="n-status text-rose-500">Reserve Block</div>
+                    </div>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      
+      
+      <!-- WBS Data Table (JS Populated) -->
+      <div class="glass-card p-10 mb-8">
+        <h2 class="text-3xl font-bold text-white mb-6 border-b border-zinc-700 pb-2">WBS Schedule Table</h2>
+        <div class="overflow-x-auto rounded border border-zinc-700/50">
+          <table class="data-table w-full text-sm">
+            <thead>
+              <tr><th class="py-3 text-white font-bold">ID</th><th class="py-3 text-white font-bold">Task / Phase</th><th class="py-3 text-white font-bold">Duration</th><th class="py-3 text-white font-bold">Start</th><th class="py-3 text-white font-bold">Finish</th><th class="py-3 text-white font-bold">Status</th></tr>
+            </thead>
+            <tbody id="wbs-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- WBS Business Insights -->
+      <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+        
+        <div class="bg-zinc-900/80 p-6 rounded-xl border border-zinc-500/30 border-t-4 border-t-zinc-300 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+          <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="layers" class="w-32 h-32 text-white"></i></div>
+          <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="layers" class="text-zinc-300 w-5 h-5"></i> 100% Rule Compliance</h3>
+          <p class="text-white text-sm font-medium leading-relaxed">The Work Breakdown Structure decomposes the massive Core Banking Migration into exactly 13 manageable Work Packages. This structural hierarchy ensures no scope is missed between the Agile STP software development and the Waterfall infrastructure provisioning.</p>
+        </div>
+        
+        <div class="bg-zinc-900/80 p-6 rounded-xl border border-blue-500/30 border-t-4 border-t-blue-400 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+          <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="users" class="w-32 h-32 text-blue-500"></i></div>
+          <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="users" class="text-blue-300 w-5 h-5"></i> Strict Resource Accountability</h3>
+          <p class="text-white text-sm font-medium leading-relaxed">Every Level-3 Work Package in this table is tightly coupled to our RACI matrix. For example, the <em>API Devs</em> are explicitly accountable for Sprint 3, while the <em>DB Admins</em> own the ETL pipeline. This prevents "floating scope" and ensures single-point accountability for every task.</p>
+        </div>
+        
+      </div>
+      <!-- Gantt Chart Card -->
+      <div class="glass-card p-10">
+        <div class="flex justify-between items-end mb-6 border-b border-zinc-700 pb-2">
+          <h2 class="text-3xl font-bold text-white">Project Gantt Timeline</h2>
+          <div class="flex flex-col items-end gap-3">
+            <button onclick="openMspGantt()" class="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded text-sm transition text-white"><i data-lucide="image" class="w-4 h-4"></i> View Simulated .mpp Source</button>
+            <div class="flex gap-4 text-xs font-medium">
+              
+            <span class="flex items-center gap-1.5 text-emerald-400"><div class="w-3 h-3 bg-emerald-500 rounded-sm"></div> Completed</span>
+            <span class="flex items-center gap-1.5 text-brand-300"><div class="w-3 h-3 bg-brand-500 rounded-sm"></div> In Progress</span>
+            <span class="flex items-center gap-1.5 text-rose-400"><div class="w-3 h-3 bg-rose-500 rounded-sm animate-pulse"></div> Behind Schedule</span>
+            <span class="flex items-center gap-1.5 text-white"><div class="w-3 h-3 bg-zinc-600 rounded-sm opacity-50 border border-zinc-400 border-dashed"></div> Pending</span>
+          
+            </div>
+          </div>
+        </div>
+        
+        <div class="flex rounded border border-zinc-700/50 bg-[black]/50 mb-8">
+          
+          <!-- Y-Axis (Fixed Task List) -->
+          <div class="w-72 flex-shrink-0 border-r border-zinc-700/50 bg-zinc-900/80 flex flex-col z-20 shadow-[4px_0_15px_rgba(0,0,0,0.5)]">
+            <div class="h-[43px] border-b border-zinc-700 flex items-center px-4 text-[10px] uppercase tracking-widest text-zinc-400 font-bold bg-zinc-800/90">
+              <i data-lucide="layers" class="w-3 h-3 mr-2"></i> Y-Axis (Tasks)
+            </div>
+            <div id="gantt-y-axis" class="relative pb-6">
+              <!-- JS Populated -->
+            </div>
+          </div>
+
+          <!-- X-Axis & Gantt Bars (Scrollable) -->
+          <div class="overflow-x-auto overflow-y-hidden custom-scrollbar flex-grow relative">
+            <!-- Floating X-Axis Label -->
+            <div class="sticky left-1/2 transform -translate-x-1/2 w-max text-[10px] uppercase tracking-widest text-zinc-400 font-bold mt-1 z-30 pointer-events-none opacity-50 flex items-center gap-1">
+              <i data-lucide="clock" class="w-3 h-3"></i> X-Axis (Timeline in Days)
+            </div>
+
+            <div id="gantt-container" style="width: 1600px; position: relative; margin-top: -16px;">
+              <!-- Timeline Header -->
+              <div class="flex sticky top-0 z-10 bg-zinc-800/90 border-b border-zinc-700 text-xs text-white font-medium font-mono shadow-md h-[43px] items-center">
+                <div class="w-[266.6px] px-3 border-r border-zinc-700 text-center tracking-widest uppercase">Month 1 (Days 1-30)</div>
+                <div class="w-[266.6px] px-3 border-r border-zinc-700 text-center tracking-widest uppercase">Month 2 (Days 31-60)</div>
+                <div class="w-[266.6px] px-3 border-r border-zinc-700 text-center tracking-widest uppercase">Month 3 (Days 61-90)</div>
+                <div class="w-[266.6px] px-3 border-r border-zinc-700 text-center tracking-widest uppercase">Month 4 (Days 91-120)</div>
+                <div class="w-[266.6px] px-3 border-r border-zinc-700 text-center tracking-widest uppercase">Month 5 (Days 121-150)</div>
+                <div class="w-[266.6px] px-3 border-r border-zinc-700 text-center tracking-widest uppercase">Month 6 (Days 151-180)</div>
+              </div>
+              <!-- Gantt Bars Container -->
+              <div id="gantt-bars" class="relative pb-6">
+                 <!-- JS Populated -->
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Gantt Chart Business Insights -->
+        <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 pb-10">
+          
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-rose-500/30 border-t-4 border-t-rose-500 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="calendar-x" class="w-32 h-32 text-rose-500"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="calendar-x" class="text-rose-400 w-5 h-5"></i> Schedule Slippage (Day 75)</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">The vertical <strong>Today</strong> line visually demonstrates our current project phase. While all architectural planning was completed flawlessly, Sprint 3 is currently flagged in <span class="text-rose-400 font-bold">Red (Behind Schedule)</span>. This provides an immediate, visual early-warning system to executives.</p>
+          </div>
+          
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-emerald-500/30 border-t-4 border-t-emerald-400 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="git-merge" class="w-32 h-32 text-emerald-500"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="git-merge" class="text-emerald-300 w-5 h-5"></i> Waterfall Cascading Effect</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">The staggered, cascading layout of the Gantt bars clearly visualizes the hard <strong>Finish-to-Start dependencies</strong> of our hybrid model. Executives can instantly see that <em>User Acceptance Testing (Task 5.1)</em> is completely blocked from starting until all four Agile Sprints and Data Migration branches converge.</p>
+          </div>
+          
+        </div>
+      </div>
+
+    </section>
+    <!-- SECTION 4: NETWORK -->
+    <section id="sec-network" class="section-view">
+      <div class="glass-card p-10">
+        <div class="flex justify-between items-center mb-4 border-b border-zinc-700 pb-2">
+          <h2 class="text-3xl font-bold text-white">AON Network & CPM (Critical Path Method)</h2>
+          <button onclick="openMspNetwork()" class="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded text-sm transition text-white"><i data-lucide="image" class="w-4 h-4"></i> View Simulated .mpp Source</button>
+        </div>
+        <p class="text-base text-white mb-8">Hover over network nodes to view their project management definitions and task linkages. The <span class="text-rose-400 font-bold">Red Path</span> indicates zero float.</p>
+        
+        <div class="w-full rounded-xl border border-zinc-700/50">
+          <div class="aon-canvas" id="aon-container" style="width: 100%; height: 420px; position: relative;">
+            <svg id="aon-svg" class="absolute inset-0 w-full h-full pointer-events-none">
+            <defs>
+              <marker id="arrN" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,255,255,0.2)"/></marker>
+              <marker id="arrC" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444"/></marker>
+              <marker id="arrH" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a855f7"/></marker>
+            </defs>
+          </svg>
+          </div>
+        
+        <!-- Critical Path Insights & Recommendations -->
+        <div class="mt-10 grid grid-cols-1 md:grid-cols-3 gap-8 pb-10">
+          
+          <!-- Critical Path Bottlenecks -->
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-rose-500/30 border-t-4 border-t-rose-500 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="alert-triangle" class="w-32 h-32 text-rose-500"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="git-commit" class="text-rose-400 w-5 h-5"></i> The Critical Path (Zero Float)</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">The <strong class="text-rose-400">Red Path</strong> dictates the absolute minimum duration of the project. Activities like the <em>STP Agile Sprints</em> and <em>UAT</em> lie directly on this path. Because they possess <strong>zero float</strong>, a delay of even one day in any of these nodes will result in a day-for-day slip of the final Go-Live date.</p>
+          </div>
+
+          <!-- Schedule Reserve -->
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-emerald-500/30 border-t-4 border-t-emerald-500 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="shield-check" class="w-32 h-32 text-emerald-500"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="calendar-check" class="text-emerald-400 w-5 h-5"></i> 35-Day Management Reserve</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">While the Steering Committee mandated a <strong>180-day</strong> baseline, our AON network logic mathematically proves the core work can be completed in <strong>145 days</strong>. This generates a massive 35-day Schedule Reserve, providing an excellent buffer against unforeseen regulatory or API integration blockers.</p>
+          </div>
+
+          <!-- Parallel Execution Risk -->
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-blue-500/30 border-t-4 border-t-blue-500 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="git-branch" class="w-32 h-32 text-blue-500"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="database" class="text-white w-5 h-5"></i> Parallel Execution Risk</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">The <strong>1.4M Record DB Migration</strong> and <strong>ETL Pipeline</strong> (Tasks 4.1 & 4.2) are scheduled to run in parallel alongside the Agile Sprints. While they possess natural scheduling slack, data cleansing is historically high-risk. We strongly recommend executing them as early as possible rather than consuming their available float.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 5: RESOURCES -->
+    <section id="sec-resources" class="section-view">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="glass-card p-10">
+          <h2 class="text-3xl font-bold text-white mb-4 border-b border-zinc-700 pb-2">Resource Leveling</h2>
+          <p class="text-sm text-white mb-4">The initial <code>.mpp</code> schedule double-booked the <strong>Lead Cloud Architect</strong> across Sprint 1 and Legacy Data Cleansing. Leveling was applied to sequence their tasks, shifting float in the Data Migration path.</p>
+          
+          <table class="data-table w-full text-sm">
+            <thead>
+              <tr>
+                <th class="py-4 text-white font-bold">Resource</th>
+                <th class="py-4 text-white font-bold">Role</th>
+                <th class="py-4 text-white font-bold">Max Units</th>
+                <th class="py-4 text-white font-bold">Assigned Tasks</th>
+                <th class="py-4 text-white font-bold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="hover:bg-white/5 transition-colors">
+                <td class="py-4 text-white font-medium">Project Manager</td>
+                <td class="py-4 text-white">PM Lead</td>
+                <td class="py-4 text-white font-mono">100%</td>
+                <td class="py-4 text-white">All Phases (1.0 – 7.0)</td>
+                <td class="py-4 text-emerald-400 font-bold">✓ Optimal</td>
+              </tr>
+              <tr class="hover:bg-white/5 transition-colors">
+                <td class="py-4 text-white font-medium">Compliance Consultant</td>
+                <td class="py-4 text-white">RBI / DPDP Audit</td>
+                <td class="py-4 text-white font-mono">100%</td>
+                <td class="py-4 text-white">Task 1.2 (RBI Audit Review)</td>
+                <td class="py-4 text-emerald-400 font-bold">✓ Optimal</td>
+              </tr>
+              <tr class="bg-amber-900/20 hover:bg-amber-900/30 transition-colors" onmouseenter="showTooltip('Overallocation Resolved', 'Previously at 160% allocation across Sprint 1 and Data Cleansing simultaneously. Resolved via Resource Leveling by utilizing 15 days of float on Task 4.0.')" onmouseleave="hideTooltip()">
+                <td class="py-4 text-amber-400 font-bold">⚠ Lead Cloud Architect</td>
+                <td class="py-4 text-amber-300">Infra & Sprint Lead</td>
+                <td class="py-4 text-amber-400 font-mono font-bold">Leveled (was 160%)</td>
+                <td class="py-4 text-amber-300">Tasks 2.1, 3.1, 4.1 (Sequenced)</td>
+                <td class="py-4 text-amber-400 font-bold">⚡ Resolved</td>
+              </tr>
+              <tr class="hover:bg-white/5 transition-colors">
+                <td class="py-4 text-white font-medium">DBA Specialist (×2)</td>
+                <td class="py-4 text-white">Migration & ETL</td>
+                <td class="py-4 text-white font-mono">200%</td>
+                <td class="py-4 text-white">Tasks 2.2, 4.1 (DB Schema + ETL)</td>
+                <td class="py-4 text-emerald-400 font-bold">✓ Optimal</td>
+              </tr>
+              <tr class="hover:bg-white/5 transition-colors">
+                <td class="py-4 text-white font-medium">API Engineers (×4)</td>
+                <td class="py-4 text-white">STP Sprint Dev Team</td>
+                <td class="py-4 text-white font-mono">400%</td>
+                <td class="py-4 text-white">Tasks 3.1 – 3.4 (All 4 Sprints)</td>
+                <td class="py-4 text-emerald-400 font-bold">✓ Optimal</td>
+              </tr>
+              <tr class="hover:bg-white/5 transition-colors">
+                <td class="py-4 text-white font-medium">QA / Security Lead</td>
+                <td class="py-4 text-white">UAT & VAPT</td>
+                <td class="py-4 text-white font-mono">100%</td>
+                <td class="py-4 text-white">Task 5.0 (UAT & Security Audit)</td>
+                <td class="py-4 text-emerald-400 font-bold">✓ Optimal</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="glass-card p-8 border-brand-500/30 bg-brand-900/10">
+          <h2 class="text-3xl font-bold text-brand-300 mb-4 border-b border-brand-900/50 pb-2">Schedule Crashing Scenario</h2>
+          <p class="text-sm text-white font-medium mb-6">If executives demand a 130-day delivery instead of 145 days, <strong>Crashing</strong> the critical path is required. We identified the STP Engine (Task 3.0) as the lowest crash cost-per-day.</p>
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-black/30 p-4 rounded border border-zinc-700">
+              <div class="text-xs text-white mb-1">Time Reduction</div>
+              <div class="text-5xl font-bold text-white tracking-tight mt-2">-15 <span class="text-sm font-normal text-white">Days</span></div>
+            </div>
+            <div class="bg-black/30 p-4 rounded border border-zinc-700">
+              <div class="text-xs text-white mb-1">Crashing Cost (Overtime)</div>
+              <div class="text-5xl font-bold text-rose-400 tracking-tight mt-2">+₹15 <span class="text-sm font-normal text-white">Lakhs</span></div>
+            </div>
+          </div>
+        </div>
+      </div> <!-- Close the 2-column grid properly -->
+      
+      <!-- Resources & Crashing Insights (Now full width) -->
+      <div class="mt-10 grid grid-cols-1 md:grid-cols-3 gap-8 pb-10 w-full">
+
+          
+          <!-- Resource Leveling -->
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-amber-500/30 border-t-4 border-t-amber-500 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="users" class="w-32 h-32 text-amber-500"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="scale" class="text-amber-400 w-5 h-5"></i> Float Utilization (Leveling)</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">By resolving the dangerous double-booking of the Lead Cloud Architect, we had to delay their start on Data Cleansing. Fortunately, because that specific path possessed <strong>positive scheduling float</strong>, this resource leveling was achieved without delaying the final 145-day critical path.</p>
+          </div>
+
+          <!-- Schedule Crashing -->
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-indigo-500/30 border-t-4 border-t-indigo-500 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="zap" class="w-32 h-32 text-indigo-500"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="banknote" class="text-indigo-400 w-5 h-5"></i> Optimized Crash Cost</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">To meet the aggressive 130-day executive mandate, we applied <strong>Schedule Crashing</strong> specifically to the STP Engine. It was chosen because it sits directly on the Critical Path and offered the lowest crash cost-slope, allowing us to shave 15 days off the timeline for exactly ₹15 Lakhs.</p>
+          </div>
+
+          <!-- Diminishing Returns -->
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-zinc-400/30 border-t-4 border-t-zinc-300 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="trending-down" class="w-32 h-32 text-white"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="alert-circle" class="text-white w-5 h-5"></i> Diminishing Returns Risk</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">We advise against further crashing. Injecting additional external contractors into complex Agile sprints invokes <strong>Brooks' Law</strong> (onboarding overhead outweighs velocity gains). Any further compression will likely result in exponential cost spikes and severe architectural quality degradation.</p>
+          </div>
+
+        </div>
+      </section>
+
+    <!-- SECTION 6: EVA -->
+    <section id="sec-evm" class="section-view">
+      <div class="glass-card p-10">
+        <div class="flex justify-between items-center mb-6 border-b border-zinc-700 pb-2">
+          <h2 class="text-3xl font-bold text-white">Earned Value Analysis (EVA) - Day 75</h2>
+        </div>
+        
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
+          <div class="glass-card bg-zinc-900/60 p-6 rounded-xl border border-zinc-700" onmouseenter="showTooltip('Schedule Performance Index', 'SPI = EV / PV.<br>A value &lt; 1.0 indicates the project is behind schedule.')" onmouseleave="hideTooltip()">
+            <div class="text-xs text-white">SPI (Schedule)</div>
+            <div class="text-5xl font-bold tracking-tight text-rose-400">0.94 <i data-lucide="trending-down" class="inline w-5 h-5"></i></div>
+            <div class="text-[10px] text-white mt-1">Behind Schedule</div>
+          </div>
+          <div class="glass-card bg-zinc-900/60 p-6 rounded-xl border border-zinc-700" onmouseenter="showTooltip('Cost Performance Index', 'CPI = EV / AC.<br>A value &gt; 1.0 indicates the project is under budget.')" onmouseleave="hideTooltip()">
+            <div class="text-xs text-white">CPI (Cost)</div>
+            <div class="text-5xl font-bold tracking-tight text-emerald-400">1.03 <i data-lucide="trending-up" class="inline w-5 h-5"></i></div>
+            <div class="text-[10px] text-white mt-1">Under Budget</div>
+          </div>
+          <div class="glass-card bg-zinc-900/60 p-6 rounded-xl border border-zinc-700">
+            <div class="text-xs text-white">Planned Value (PV)</div>
+            <div class="text-4xl font-bold text-white font-mono mt-2">₹162 Lakhs</div>
+          </div>
+          <div class="glass-card bg-zinc-900/60 p-6 rounded-xl border border-zinc-700">
+            <div class="text-xs text-white">Earned Value (EV)</div>
+            <div class="text-4xl font-bold text-cyan-400 font-mono mt-2">₹152 Lakhs</div>
+          </div>
+        </div>
+
+        <div class="h-[650px] w-full">
+          <canvas id="evaChart"></canvas>
+        </div>
+        
+        <!-- Business Insights & Recommendations -->
+        <div class="mt-10 grid grid-cols-1 md:grid-cols-3 gap-8 pb-10">
+          
+          <!-- Schedule Risk -->
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-rose-500/30 border-t-4 border-t-rose-500 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="trending-down" class="w-32 h-32 text-rose-500"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="clock" class="text-rose-400 w-5 h-5"></i> Schedule Risk (SPI: 0.94)</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">The project is currently executing at 94% of planned velocity. The primary drag is isolated within <strong>Task 3.3 (Agile Sprint 3)</strong>. If unmitigated, the 180-day deadline will slip by ~11 days, heavily jeopardizing the mandated 48-hour production cutover window.</p>
+          </div>
+
+          <!-- Cost Efficiency -->
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-emerald-500/30 border-t-4 border-t-emerald-500 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="trending-up" class="w-32 h-32 text-emerald-500"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="circle-dollar-sign" class="text-emerald-400 w-5 h-5"></i> Cost Surplus (CPI: 1.03)</h3>
+            <p class="text-white text-sm font-medium leading-relaxed">Financial efficiency is exceeding expectations. The program is generating ₹1.03 of Earned Value for every ₹1.00 spent. This surplus was primarily generated by successfully utilizing in-house DB administrators during the VNet provisioning phase instead of external vendors.</p>
+          </div>
+
+          <!-- Strategic Recommendation -->
+          <div class="bg-zinc-900/80 p-6 rounded-xl border border-zinc-400/30 border-t-4 border-t-zinc-300 shadow-lg relative overflow-hidden group hover:bg-zinc-800/80 transition-colors">
+            <div class="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity"><i data-lucide="lightbulb" class="w-32 h-32 text-white"></i></div>
+            <h3 class="text-white font-bold text-xl mb-3 flex items-center gap-2"><i data-lucide="target" class="text-white w-5 h-5"></i> PMO Recommendation</h3>
+            <p class="text-white text-sm font-medium leading-relaxed"><strong>Deploy Schedule Crashing:</strong> Since the project is under budget (CPI > 1) but behind schedule (SPI < 1), the Steering Committee is advised to utilize the cost surplus to authorize targeted overtime for the API Devs. This will compress Sprint 3 and realign the SPI to 1.00 without breaching the ₹3.80 Cr baseline.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  
+  <!-- CHARTER MODAL -->
+  <div id="charterModal" class="msp-modal" onclick="if(event.target===this) this.classList.remove('active')">
+    <div class="max-h-[90vh] overflow-y-auto rounded-lg shadow-2xl relative w-[900px] max-w-[95vw]">
+      
+      <div class="glass-card p-10 max-w-4xl mx-auto">
+        <div class="bg-[#18181b] text-white px-6 py-4 flex justify-between items-center rounded-t-lg">
+          <div><div class="uppercase text-[10px] tracking-widest text-blue-200">CONTROLLED DOCUMENT — PDF PREVIEW</div><h2 class="font-extrabold text-xl">Project Charter - Digitally Signed Copy</h2></div>
+          <i data-lucide="shield-check" class="text-emerald-400 mr-4"></i><button onclick="document.getElementById('charterModal').classList.remove('active')" class="text-white hover:text-rose-400 font-bold text-xl ml-4">✕</button>
+        </div>
+        <div class="corporate-pdf mx-auto bg-white shadow-xl rounded-b-lg border-x border-b border-zinc-300">
+          <div class="pdf-page">
+            <div class="flex items-start justify-between border-b-2 border-[#18181b] pb-4">
+              <div>
+                <div class="text-[10px] tracking-[.22em] text-white font-bold">NORTHSTAR FINANCIAL SERVICES LTD.</div>
+                <div class="text-3xl font-extrabold text-[#18181b] mt-1">PROJECT CHARTER</div>
+                <div class="text-sm text-white mt-1">Core Banking & STP Underwriting Migration</div>
+              </div>
+              <div class="text-right text-[10px] text-white">
+                <b>Document ID:</b> PMO-NBFC-2026-08<br>
+                <b>Version:</b> 1.0 — Controlled Copy<br>
+                <b>Classification:</b> Internal
+              </div>
+            </div>
+
+            <div class="grid grid-cols-4 gap-2 mt-6 text-[10px]">
+              <div class="border p-2"><b>SPONSOR</b><br>Chief Credit Officer</div>
+              <div class="border p-2"><b>PROJECT MANAGER</b><br>Transformation PMO</div>
+              <div class="border p-2"><b>DURATION</b><br>180 Days</div>
+              <div class="border p-2"><b>BUDGET</b><br>₹3.80 Cr</div>
+            </div>
+
+            <div class="pdf-section"><h3>1. Purpose & Business Case</h3>
+              <p>The legacy Core Banking System creates severe underwriting bottlenecks, requiring up to 48 hours for MSME and retail credit appraisal and contributing to a 32% application abandonment rate. The program will migrate to a cloud-native Core Banking Engine and implement automated Straight-Through Processing (STP) underwriting to support 4x loan-volume growth without operational disruption.</p>
+            </div>
+
+            <div class="pdf-section"><h3>2. Objectives & Success Criteria</h3>
+              <table class="pdf-table"><tr><th class="py-4 text-white font-medium font-bold">Measure</th><th class="py-4 text-white font-medium font-bold">Target</th></tr>
+                <tr><td class="py-4">End-to-end credit decisioning</td><td class="py-4">&lt; 300 seconds</td></tr>
+                <tr><td class="py-4">Application abandonment</td><td class="py-4">8%</td></tr>
+                <tr><td class="py-4">Migration reconciliation</td><td class="py-4">100% / zero variance</td></tr>
+                <tr><td class="py-4">Production cutover</td><td class="py-4">≤ 48 hours</td></tr>
+                <tr><td class="py-4">DR RPO / RTO</td><td class="py-4">&lt; 0 sec / &lt; 15 min</td></tr>
+              </table>
+            </div>
+
+            <div class="pdf-section"><h3>3. Scope & Constraints</h3>
+              <div class="grid grid-cols-2 gap-5">
+                <div><b>In Scope</b><ul><li>Cloud CBS and HA/failover</li><li>STP underwriting engine</li><li>AA, CIBIL/Experian, NSDL/UIDAI and banking APIs</li><li>1.4M-record extraction, cleansing and ETL</li><li>UAT, VAPT and production cutover</li></ul></div>
+                <div><b>Constraints</b><ul><li>RBI Digital Lending and DPDP compliance</li><li>Maximum 48-hour cutover</li><li>DBA migration specialists capped at 160 man-hours</li><li>Zero-loss migration expectation</li></ul></div>
+              </div>
+            </div>
+
+            <div class="pdf-section"><h3>4. Delivery Approach</h3>
+              <p><b>Hybrid Agile-Waterfall.</b> Waterfall governs initiation, regulatory compliance, architecture, database migration, integrated testing, cutover and closure. The STP engine is delivered through four two-week Agile sprints.</p>
+            </div>
+
+            <div class="pdf-section"><h3>5. Governance & Approval</h3>
+              <table class="pdf-table"><tr><th class="py-4 text-white font-medium font-bold">Deliverable</th><th class="py-4 text-white font-medium font-bold">Accountable</th><th class="py-4 text-white font-medium font-bold">Responsible</th></tr>
+                <tr><td class="py-4">Charter & budget</td><td class="py-4">Steering Committee</td><td class="py-4">Project Manager</td></tr>
+                <tr><td class="py-4">Architecture & InfoSec</td><td class="py-4">Project Manager</td><td class="py-4">Cloud Architect / Compliance</td></tr>
+                <tr><td class="py-4">STP engine</td><td class="py-4">Project Manager</td><td class="py-4">Cloud Architect / Credit Risk</td></tr>
+                <tr><td class="py-4">DB migration & ETL</td><td class="py-4">Project Manager</td><td class="py-4">DBA Lead</td></tr>
+                <tr><td class="py-4">48-hour cutover</td><td class="py-4">Steering Committee</td><td class="py-4">PM / Cloud Architect / DBA</td></tr>
+              </table>
+            </div>
+
+            <div class="signature-panel">
+              <div>
+                <div class="uppercase text-[10px] text-white">DIGITAL SIGNATURE</div>
+                <div class="signature-script">Approved</div>
+                <div class="text-[10px] text-zinc-600">Chief Credit Officer<br>Transformation Steering Committee</div>
+              </div>
+              <div class="signature-seal"><div>APPROVED<br>2026</div></div>
+              <div>
+                <div class="uppercase text-[10px] text-white">TIMESTAMP</div>
+                <div class="text-[10px] text-zinc-600 mt-1">IP: 10.4.112.9<br>Date: 01-Apr-2026 09:14 UTC<br>Hash: 0x9F4B2A8C</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+    </div>
+  </div>
+  
+  <!-- FAKE MS PROJECT VIEWER MODAL -->
+  <div id="msp-modal" class="msp-modal" onclick="if(event.target===this) this.classList.remove('active')">
+    <div class="msp-window">
+      <div class="msp-header">
+        <div class="flex items-center gap-2"><i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-300"></i> Project Professional - Banking_PM_Project.mpp</div>
+        <div class="cursor-pointer" onclick="document.getElementById('msp-modal').classList.remove('active')">✕</div>
+      </div>
+      <div class="msp-ribbon">
+        <div class="msp-tab bg-[#217346] text-white">File</div>
+        <div class="msp-tab active" id="tab-gantt" onclick="switchMspView('gantt')">Gantt Chart</div>
+        <div class="msp-tab" id="tab-network" onclick="switchMspView('network')">Network Diagram</div>
+        <div class="msp-tab">Resource</div>
+      </div>
+      <div class="msp-body" id="msp-view-gantt">
+        <div class="msp-grid">
+          <table class="msp-table">
+            <th class="py-4 text-white font-medium font-bold"ead><tr><th class="py-4 text-white font-medium font-bold">ID</th><th class="py-4 text-white font-medium font-bold">Task Name</th><th class="py-4 text-white font-medium font-bold">Duration</th><th class="py-4 text-white font-medium font-bold">Start</th><th class="py-4 text-white font-medium font-bold">Finish</th></tr></thead>
+            <tbody id="msp-tbody"></tbody>
+          </table>
+        </div>
+        <div class="msp-gantt">
+          <div class="flex bg-gray-100 border-b border-gray-300 font-mono text-[10px] sticky top-0 z-10">
+            <div class="min-w-[80px] border-r p-1 text-center">Month 1</div><div class="min-w-[80px] border-r p-1 text-center">Month 2</div><div class="min-w-[80px] border-r p-1 text-center">Month 3</div><div class="min-w-[80px] border-r p-1 text-center">Month 4</div><div class="min-w-[80px] border-r p-1 text-center">Month 5</div><div class="min-w-[80px] border-r p-1 text-center">Month 6</div>
+          </div>
+          <div id="msp-gantt-bars" class="relative mt-1"></div>
+        </div>
+      </div>
+      <div class="msp-body" id="msp-view-network" style="display:none; background:#e5e7eb; overflow:auto; position:relative;">
+        <div id="msp-network-canvas" style="position:relative; width:2000px; height:600px; padding:20px;">
+          <!-- JS will populate this with MS Project style nodes -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+
+    // Data definition ensuring "Days" are explicitly written
+    const tasks = [
+      { id:'1', name:'Core Banking & STP Migration', dur:'180 Days', s:0, len:180, sum:true },
+      { id:'1.0', name:'Initiation & Compliance', dur:'20 Days', s:0, len:20, sum:true },
+      { id:'1.1', name:'Charter Setup', dur:'6 Days', s:0, len:6, sum:false },
+      { id:'1.2', name:'RBI Audit Review', dur:'14 Days', s:6, len:14, sum:false },
+      { id:'2.0', name:'Architecture & Cloud', dur:'25 Days', s:20, len:25, sum:true },
+      { id:'2.1', name:'VNet Hardening', dur:'15 Days', s:20, len:15, sum:false },
+      { id:'2.2', name:'Target DB Schema', dur:'10 Days', s:35, len:10, sum:false },
+      { id:'3.0', name:'STP Underwriting Engine', dur:'50 Days', s:45, len:50, sum:true },
+      { id:'3.1', name:'4 Agile Sprints', dur:'50 Days', s:45, len:50, sum:false },
+      { id:'4.0', name:'DB Migration & ETL (1.4M)', dur:'35 Days', s:45, len:35, sum:true },
+      { id:'4.1', name:'Cleansing & Pipeline', dur:'35 Days', s:45, len:35, sum:false },
+      { id:'5.0', name:'UAT & Security Audit', dur:'30 Days', s:95, len:30, sum:true },
+      { id:'6.0', name:'48-Hour Live Cutover', dur:'2 Days', s:125, len:2, sum:true },
+      { id:'7.0', name:'Stabilization & Closure', dur:'18 Days', s:127, len:18, sum:true },
+      { id:'8.0', name:'Management Reserve', dur:'35 Days', s:145, len:35, sum:true, reserve:true }
+    ];
+
+    // Render Web Gantt
+    const wbsBody = document.getElementById('wbs-body');
+    const webGantt = document.getElementById('gantt-bars');
+    const mspBody = document.getElementById('msp-tbody');
+    const mspGantt = document.getElementById('msp-gantt-bars');
+    
+    // Scale for web gantt: 180 days = 100% (or fixed width)
+    const CURRENT_DAY = 75;
+    const pxPerDayWeb = 8.888; // 1600px total width / 180 days = 8.888px per day
+    const pxPerDayMsp = 2.66; // 80px per month (30 days)
+
+    // Draw the Today Line on Web Gantt
+    webGantt.innerHTML += `<div class="absolute top-0 bottom-0 border-l-2 border-rose-500 z-20 pointer-events-none" style="left:${CURRENT_DAY * pxPerDayWeb}px;">
+      <div class="absolute -top-3 -translate-x-1/2 bg-rose-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg whitespace-nowrap tracking-wider">STATUS: DAY ${CURRENT_DAY}</div>
+    </div>`;
+
+    tasks.forEach((t, i) => {
+      let isSub = t.id.includes('.');
+      let endDay = t.s + t.len;
+      
+      // Determine Status & Colors
+      let status = '';
+      let statusColor = '';
+      let barColor = '';
+      let barHeight = 'h-7 mt-2 rounded-md';
+
+      if (endDay <= CURRENT_DAY) {
+        status = 'Completed';
+        statusColor = 'text-emerald-400';
+        barColor = 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]';
+      } else if (t.s > CURRENT_DAY) {
+        status = 'Pending';
+        statusColor = 'text-zinc-400';
+        barColor = 'bg-zinc-700/50 border-zinc-500 border-dashed border-2 opacity-60';
+      } else {
+        // In progress (crosses current day)
+        if (t.id === '3.3') {
+          status = 'Behind Schedule';
+          statusColor = 'text-rose-400 font-bold';
+          barColor = 'bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.8)] animate-pulse border border-rose-300';
+        } else {
+          status = 'In Progress';
+          statusColor = 'text-brand-300 font-bold';
+          barColor = 'bg-brand-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]';
+        }
+      }
+
+      // Override Gantt bar styling for summary/parent tasks
+      if (t.sum) {
+        barColor = 'bg-zinc-500/80'; // Dull grey for summary bars
+        if (t.reserve) {
+          status = 'Reserve';
+          statusColor = 'text-rose-500';
+          barColor = 'bg-rose-500/30 border border-rose-500/50';
+        }
+      }
+      
+      // Web WBS Table
+      let pad = isSub ? 'pl-10 text-white font-medium' : 'font-bold bg-zinc-800/40 text-white pl-6';
+      if(t.reserve) pad = 'text-rose-400 font-bold bg-rose-900/10 pl-6';
+      
+      wbsBody.innerHTML += `<tr class="${pad} hover:bg-white/5 transition-colors">
+        <td class="font-mono text-white">${t.id}</td>
+        <td>${t.name}</td>
+        <td class="font-mono text-white">${t.dur}</td>
+        <td class="font-mono text-white">Day ${t.s}</td>
+        <td class="font-mono text-white">Day ${endDay}</td>
+        <td class="${statusColor} font-medium">${status}</td>
+      </tr>`;
+      
+      // Web Gantt Bar (No attached labels)
+      webGantt.innerHTML += `<div class="relative h-[48px] border-b border-zinc-700/30 w-full hover:bg-zinc-800/40 transition-colors cursor-crosshair" onmouseenter="showTooltip('${t.name}', 'Status: ${status} | Starts on Day ${t.s}, runs for ${t.dur}')" onmouseleave="hideTooltip()">
+        <div class="absolute ${barColor} ${barHeight} transition-all duration-300 hover:brightness-125" style="left:${t.s * pxPerDayWeb}px; width:${t.len * pxPerDayWeb}px;"></div>
+      </div>`;
+      
+      // Y-Axis Labels
+      const yAxis = document.getElementById('gantt-y-axis');
+      if (yAxis) {
+        let yPad = t.sum ? 'pl-4 font-bold text-white bg-zinc-800/20' : 'pl-10 text-zinc-300';
+        if(t.reserve) yPad = 'pl-4 font-bold text-rose-400 bg-rose-900/10';
+        yAxis.innerHTML += `<div class="h-[48px] flex items-center border-b border-zinc-700/30 ${yPad} text-xs truncate" title="${t.name}">
+          ${t.name}
+        </div>`;
+      }
+
+      // MSP Table (Unchanged)
+      let mspFw = t.sum ? 'font-weight:bold;' : '';
+      let mspInd = isSub ? 'padding-left:20px;' : '';
+      mspBody.innerHTML += `<tr><td>${i+1}</td><td style="${mspFw} ${mspInd}">${t.name}</td><td style="${mspFw}">${t.dur}</td><td>Day ${t.s}</td><td>Day ${endDay}</td></tr>`;
+      
+      let barCls = t.sum ? 'msp-bar-sum' : 'msp-bar-task';
+      mspGantt.innerHTML += `<div class="msp-bar-row"><div class="${barCls}" style="left:${t.s * pxPerDayMsp}px; width:${t.len * pxPerDayMsp}px;"></div></div>`;
+    });
+
+    // AON Nodes
+    const aonNodes = [
+      { id:'1.1', label:'1.1 Charter', dur:'6 Days', x:10, y:185, crit:true, deps:['1.2'], desc:'Charter Setup' },
+      { id:'1.2', label:'1.2 RBI Audit', dur:'14 Days', x:173, y:185, crit:true, deps:['2.1'], desc:'RBI Audit Review' },
+      { id:'2.1', label:'2.1 VNet', dur:'15 Days', x:336, y:185, crit:true, deps:['2.2'], desc:'VNet Hardening' },
+      { id:'2.2', label:'2.2 DB Schema', dur:'10 Days', x:499, y:185, crit:true, deps:['3.1', '4.1'], desc:'Target DB Schema' },
+      { id:'3.1', label:'3.1 Sprint 1', dur:'10 Days', x:662, y:105, crit:true, deps:['3.2'], desc:'Sprint 1 - Bureau Connectors' },
+      { id:'3.2', label:'3.2 Sprint 2', dur:'14 Days', x:825, y:105, crit:true, deps:['3.3'], desc:'Sprint 2 - Rule Engine' },
+      { id:'3.3', label:'3.3 Sprint 3', dur:'14 Days', x:988, y:105, crit:true, deps:['3.4'], desc:'Sprint 3 - Banking APIs' },
+      { id:'3.4', label:'3.4 Sprint 4', dur:'12 Days', x:1151, y:105, crit:true, deps:['5.0'], desc:'Sprint 4 - Dashboard' },
+      { id:'4.1', label:'4.1 Cleansing', dur:'15 Days', x:662, y:265, crit:false, deps:['4.2'], desc:'Legacy Data Cleansing (Float: 15d)' },
+      { id:'4.2', label:'4.2 ETL Pipeline', dur:'20 Days', x:825, y:265, crit:false, deps:['5.0'], desc:'ETL Pipeline Sync (Float: 15d)' },
+      { id:'5.0', label:'5.0 UAT', dur:'30 Days', x:1314, y:185, crit:true, deps:['6.0'], desc:'UAT & Security Audit' },
+      { id:'6.0', label:'6.0 Cutover', dur:'2 Days', x:1477, y:185, crit:true, deps:['7.0'], desc:'48-Hour Live Cutover' },
+      { id:'7.0', label:'7.0 Closure', dur:'18 Days', x:1640, y:185, crit:true, deps:[], desc:'Stabilization & Closure' }
+    ];
+
+    const svg = document.getElementById('aon-svg');
+    const container = document.getElementById('aon-container');
+    
+    let linesHtml = '';
+    aonNodes.forEach(n => {
+      n.deps.forEach(d => {
+        let tgt = aonNodes.find(x => x.id === d);
+        let crit = n.crit && tgt.crit;
+        linesHtml += `<path class="aon-line ${crit?'critical':''}" data-src="${n.id}" data-tgt="${tgt.id}" d="M ${n.x+125} ${n.y+25} L ${tgt.x} ${tgt.y+25}" marker-end="url(#${crit?'arrC':'arrN'})" />`;
+      });
+    });
+    svg.innerHTML += linesHtml;
+
+    aonNodes.forEach(n => {
+      let div = document.createElement('div');
+      div.className = `aon-node ${n.crit ? 'critical' : ''}`;
+      div.style.left = n.x + 'px'; div.style.top = n.y + 'px';
+      div.innerHTML = `<div class="font-bold text-white text-sm">${n.label}</div><div class="text-xs text-white">${n.dur}</div>`;
+      
+      div.onmouseenter = () => {
+        showTooltip(n.label, n.desc);
+        container.classList.add('hover-active');
+        document.querySelectorAll('.aon-line').forEach(l => {
+          if(l.dataset.src===n.id || l.dataset.tgt===n.id) {
+            l.classList.add('highlight'); l.setAttribute('marker-end', 'url(#arrH)');
+          }
+        });
+      };
+      div.onmouseleave = () => {
+        hideTooltip();
+        container.classList.remove('hover-active');
+        document.querySelectorAll('.aon-line').forEach(l => {
+          l.classList.remove('highlight'); 
+          l.setAttribute('marker-end', l.classList.contains('critical') ? 'url(#arrC)' : 'url(#arrN)');
+        });
+      };
+      container.appendChild(div);
+    });
+
+    // Tooltip Logic
+    const tt = document.getElementById('hover-tooltip');
+    const ttTitle = document.getElementById('tt-title');
+    const ttDesc = document.getElementById('tt-desc');
+    
+    document.addEventListener('mousemove', (e) => {
+      if(tt.style.opacity === '1') {
+        let x = e.clientX + 15; let y = e.clientY + 15;
+        if(x + 320 > window.innerWidth) x = e.clientX - 320;
+        if(y + 100 > window.innerHeight) y = e.clientY - 100;
+        tt.style.left = x + 'px'; tt.style.top = y + 'px';
+      }
+    });
+    window.showTooltip = (title, desc) => { ttTitle.innerHTML = title; ttDesc.innerHTML = desc; tt.style.opacity = '1'; };
+    window.hideTooltip = () => { tt.style.opacity = '0'; };
+
+    // Navigation
+    window.nav = (id) => {
+      document.querySelectorAll('.section-view').forEach(s => s.classList.remove('active'));
+      document.getElementById('sec-'+id).classList.add('active');
+      document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+      const btn = document.querySelector(`[onclick="nav('${id}')"]`);
+      if(btn) btn.classList.add('active');
+      
+      // Disable scrolling for the 4 specific dashboard pages
+      if (['exec', 'stakeholders', 'network', 'resources'].includes(id)) {
+        document.body.style.overflowY = 'hidden';
+      } else {
+        document.body.style.overflowY = 'auto';
+      }
+      
+      // Also close modals just in case
+      const charter = document.getElementById('charterModal');
+      const msp = document.getElementById('msp-modal');
+      if (charter) charter.classList.remove('active');
+      if (msp) msp.classList.remove('active');
+    };
+
+    // Chart
+    Chart.defaults.color = '#94a3b8';
+    Chart.defaults.font.family = 'Inter';
+    new Chart(document.getElementById('evaChart'), {
+      type: 'line',
+      data: {
+        labels: ['Day 15', 'Day 30', 'Day 45', 'Day 60', 'Day 75 (Now)'],
+        datasets: [
+          { label:'PV (Planned Value)', data:[15, 45, 90, 130, 162], borderColor:'#64748b', borderDash:[5,5], tension:0.3 },
+          { label:'EV (Earned Value)', data:[15, 42, 85, 120, 152], borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', fill:true, tension:0.3 },
+          { label:'AC (Actual Cost)', data:[14, 40, 80, 115, 147], borderColor:'#10b981', tension:0.3 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              afterBody: function(c) {
+                return "\nSPI < 1.0 = Behind Schedule\nCPI > 1.0 = Under Budget";
+              }
+            }
+          }
+        },
+        scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } }
+      }
+    });
+  
+    // MSP Tab Switching
+    window.switchMspView = function(view) {
+      document.getElementById('tab-gantt').classList.remove('active');
+      document.getElementById('tab-network').classList.remove('active');
+      document.getElementById('tab-' + view).classList.add('active');
+      
+      document.getElementById('msp-view-gantt').style.display = 'none';
+      document.getElementById('msp-view-network').style.display = 'none';
+      
+      if(view === 'gantt') document.getElementById('msp-view-gantt').style.display = 'flex';
+      if(view === 'network') document.getElementById('msp-view-network').style.display = 'block';
+    };
+
+    window.openMspGantt = function() {
+      document.getElementById('msp-modal').classList.add('active');
+      switchMspView('gantt');
+    };
+    
+    window.openMspNetwork = function() {
+      document.getElementById('msp-modal').classList.add('active');
+      switchMspView('network');
+      renderMspNetwork();
+    };
+
+    function renderMspNetwork() {
+      const container = document.getElementById('msp-network-canvas');
+      if (container.innerHTML.includes('svg')) return; // Already rendered
+
+      let svgHtml = '<svg class="absolute inset-0 w-full h-full pointer-events-none"><defs><marker id="mspArrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/></marker><marker id="mspArrowCrit" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626"/></marker></defs>';
+      
+      // Draw lines
+      aonNodes.forEach(n => {
+        n.deps.forEach(d => {
+          let tgt = aonNodes.find(x => x.id === d);
+          let crit = n.crit && tgt.crit;
+          let color = crit ? '#dc2626' : '#000';
+          let marker = crit ? 'url(#mspArrowCrit)' : 'url(#mspArrow)';
+          svgHtml += `<path d="M ${n.x + 120} ${n.y + 40} L ${tgt.x} ${tgt.y + 40}" stroke="${color}" stroke-width="4" fill="none" marker-end="${marker}" />`;
+        });
+      });
+      svgHtml += '</svg>';
+      
+      // Draw MS Project style nodes (Yellow/Pink rectangles)
+      let nodesHtml = '';
+      aonNodes.forEach(n => {
+        let bgColor = n.crit ? '#fecaca' : '#fef08a'; // Pink for critical, Yellow for normal (MS Project style)
+        let borderColor = n.crit ? '#dc2626' : '#a16207';
+        
+        nodesHtml += `
+        <div style="position:absolute; left:${n.x}px; top:${n.y}px; width:120px; background:${bgColor}; border:1px solid ${borderColor}; box-shadow: 2px 2px 5px rgba(0,0,0,0.2); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; color: #000;">
+          <div style="border-bottom: 1px solid ${borderColor}; padding: 3px; font-weight: bold; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${n.label}</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; text-align: center;">
+            <div style="border-right: 1px solid ${borderColor}; border-bottom: 1px solid ${borderColor}; padding: 2px;">ID: ${n.id}</div>
+            <div style="border-bottom: 1px solid ${borderColor}; padding: 2px;">${n.dur}</div>
+            <div style="border-right: 1px solid ${borderColor}; padding: 2px;">Start</div>
+            <div style="padding: 2px;">Finish</div>
+          </div>
+        </div>`;
+      });
+      
+      container.innerHTML = svgHtml + nodesHtml;
+    }
+
+  
+    // INTERACTIVE CURSOR
+    const cursorRing = document.createElement('div');
+    cursorRing.className = 'fixed w-8 h-8 border border-zinc-400/50 bg-zinc-400/10 rounded-full pointer-events-none z-[9999] transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 ease-out backdrop-blur-sm shadow-[0_0_15px_rgba(255,255,255,0.2)]';
+    document.body.appendChild(cursorRing);
+
+    document.addEventListener('mousemove', (e) => {
+      cursorRing.style.left = e.clientX + 'px';
+      cursorRing.style.top = e.clientY + 'px';
+    });
+
+    // Add magnetic/expand effect to interactive elements
+    const attachCursorEvents = () => {
+      document.querySelectorAll('button, .dock-btn, .aon-node, .raci-cell, tr, .hover\\:bg-zinc-800\\/40').forEach(el => {
+        // Prevent multiple bindings
+        if(el.dataset.cursorBound) return;
+        el.dataset.cursorBound = "true";
+        
+        el.addEventListener('mouseenter', () => {
+          cursorRing.classList.remove('w-8', 'h-8', 'border-zinc-400/50', 'bg-zinc-400/10');
+          cursorRing.classList.add('w-12', 'h-12', 'border-brand-400', 'bg-brand-400/30', 'scale-110');
+        });
+        el.addEventListener('mouseleave', () => {
+          cursorRing.classList.remove('w-12', 'h-12', 'border-brand-400', 'bg-brand-400/30', 'scale-110');
+          cursorRing.classList.add('w-8', 'h-8', 'border-zinc-400/50', 'bg-zinc-400/10');
+        });
+      });
+    };
+    
+    // Run once on load
+    setTimeout(attachCursorEvents, 1000);
+    
+    // Initialize default view state
+    window.nav('exec');
+
+  </script>
+</body>
+</html>
+
